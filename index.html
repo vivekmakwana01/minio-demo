@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MinIO Demo Client</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+    h1 { margin-bottom: 1rem; }
+    .file-list { margin-top: 1rem; }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .5rem;
+      border-bottom: 1px solid #ddd;
+    }
+    .file-item span { flex: 1; }
+    button { margin-left: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>📂 MinIO Demo Client</h1>
+
+  <h2>Upload File</h2>
+  <form id="upload-form">
+    <input type="file" id="file-input" required />
+    <button type="submit">Upload (via API)</button>
+    <button type="button" id="presigned-upload">Upload (via Pre-signed URL)</button>
+  </form>
+
+  <h2>Files</h2>
+  <div id="file-list" class="file-list"></div>
+
+  <script>
+    const API_BASE = "http://localhost:3000";
+
+    // Utility: Refresh file list
+    async function loadFiles() {
+      const res = await fetch(`${API_BASE}/files`);
+      const data = await res.json();
+
+      const list = document.getElementById("file-list");
+      list.innerHTML = "";
+
+      data.files.forEach(file => {
+        const div = document.createElement("div");
+        div.className = "file-item";
+
+        const name = document.createElement("span");
+        name.textContent = `${file.originalName || file.name} (${Math.round(file.size / 1024)} KB)`;
+
+        const downloadBtn = document.createElement("a");
+        downloadBtn.href = `${API_BASE}/file/${encodeURIComponent(file.name)}`;
+        downloadBtn.textContent = "⬇️ Download";
+        downloadBtn.target = "_blank";
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "🗑 Delete";
+        deleteBtn.onclick = async () => {
+          await fetch(`${API_BASE}/file/${encodeURIComponent(file.name)}`, { method: "DELETE" });
+          loadFiles();
+        };
+
+        div.appendChild(name);
+        div.appendChild(downloadBtn);
+        div.appendChild(deleteBtn);
+        list.appendChild(div);
+      });
+    }
+
+    // Handle upload via API (/upload)
+    document.getElementById("upload-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById("file-input");
+      if (!fileInput.files.length) return;
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      const res = await fetch(`${API_BASE}/upload`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (res.ok) {
+        alert("File uploaded successfully!");
+        fileInput.value = "";
+        loadFiles();
+      } else {
+        alert("Upload failed!");
+      }
+    });
+
+    // Handle upload via Pre-signed URL
+    document.getElementById("presigned-upload").addEventListener("click", async () => {
+      const fileInput = document.getElementById("file-input");
+      if (!fileInput.files.length) return;
+      const file = fileInput.files[0];
+
+      // Step 1: Get presigned URL from server
+      const res = await fetch(`${API_BASE}/upload-url/${encodeURIComponent(file.name)}`);
+      const { uploadUrl } = await res.json();
+
+      // Step 2: Upload file directly to MinIO using PUT
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file
+      });
+
+      if (uploadRes.ok) {
+        alert("File uploaded via presigned URL!");
+        fileInput.value = "";
+        loadFiles();
+      } else {
+        alert("Presigned upload failed!");
+      }
+    });
+
+    // Load files on startup
+    loadFiles();
+  </script>
+</body>
+</html>
